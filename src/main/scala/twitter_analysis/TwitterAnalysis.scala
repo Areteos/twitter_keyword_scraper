@@ -28,8 +28,15 @@ object TwitterAnalysis {
 
 	import spark.implicits._
 
+	/**
+	 * Recursive function to retrieve tweets using Twitter's search pagination
+	 * @param query The search query
+	 * @param number The number of tweets to collate
+	 * @param nextToken next_token value pointing to next search page
+	 * @return A DataFrame with columns for [[authorColumnName]], [[idColumnName]], [[engagementColumnName]], and [[textColumnName]]
+	 */
 	// TODO further expand the amount of tweets downloadable
-	def retrieveAndProcessTweets(query: String, number: Int, nextToken: String = ""): Dataset[Row] = {
+	private def retrieveAndProcessTweets(query: String, number: Int, nextToken: String = ""): Dataset[Row] = {
 		if (number <= 100)
 			processTweets(retrieveTweets(query, number, nextToken))._1
 		else {
@@ -41,7 +48,15 @@ object TwitterAnalysis {
 		}
 	}
 
-	def retrieveTweets(query: String, number: Int = 100, nextToken: String = ""): String = {
+
+	/**
+	 * Function to construct and execute a search through twitter's API
+	 * @param query The search query
+	 * @param number The number of tweets to collate
+	 * @param nextToken next_token value pointing to next search page
+	 * @return A raw JSON string obtained from the body of the GET response
+	 */
+	private def retrieveTweets(query: String, number: Int = 100, nextToken: String = ""): String = {
 		val client = HttpClient.newHttpClient
 		val uriBuilder = UriBuilder.fromPath("https://api.twitter.com/2/tweets/search/recent")
 			.queryParam("query", query)
@@ -61,12 +76,17 @@ object TwitterAnalysis {
 		responseBody
 	}
 
-	def processTweets(rawJson: String): (DataFrame, String) = {
+	/**
+	 * Function to process raw JSON from searches into meaningful DataFrames. Performs text sanitization and
+	 * tokenization, as well as calculating engagement metric for each tweet.
+	 * @param rawJson The JSON string obtained from the body of a search via Twitter's API
+	 * @return A DataFrame with columns for [[authorColumnName]], [[idColumnName]], [[engagementColumnName]], and [[textColumnName]], and also the next_token needed to access the next page of search results
+	 */
+	private def processTweets(rawJson: String): (DataFrame, String) = {
 		val rawFrame = spark.read.json(spark.createDataset(Seq(rawJson)))
 		val basicData = rawFrame.select("data")
 			.withColumn("data", explode(col("data")))
 			.select("data.*").drop("edit_history_tweet_ids")
-
 
 		(basicData.map(row => {
 			val authorId = row.getString(0)
@@ -92,15 +112,31 @@ object TwitterAnalysis {
 	}
 
 
-	def preprocessTweetText(text: String): Array[String] = {
+	/**
+	 * Perform preprocessing on a body of text. Removes all punctuation except #, splits by spaces and newlines, and
+	 * removes empty string tokens.
+	 * @param text String body of a single tweet
+	 * @return Sanitized, tokenized array of strings
+	 */
+	private def preprocessTweetText(text: String): Array[String] = {
 		text.replaceAll("[\\p{Punct}&&[^#]]", "").toLowerCase().split("[ \n]").filter(s => s != "")
 	}
 
-	def calculateEngagement(row: Row): Double = {
+	/**
+	 * Given a Row of public_metrics, calculates an engagement metric. This is currently done by simply summing every metric.
+	 * @param row Row representing the public_metrics of a tweet
+	 * @return Engagement metric for that tweet
+	 */
+	private def calculateEngagement(row: Row): Double = {
 		(for (i <- 0 until row.size) yield row.getLong(i)).sum
 	}
 
-	def extractKeywords(dataFrame: DataFrame): DataFrame = {
+	/**
+	 * Extract keywords and their weight from the given dataset, using the [[engagementColumnName]] as label.
+	 * @param dataFrame A DataFrame with columns for [[authorColumnName]], [[idColumnName]], [[engagementColumnName]], and [[textColumnName]]
+	 * @return * @return A Dataset with columns for keyword, and importance
+	 */
+	private def extractKeywords(dataFrame: DataFrame): DataFrame = {
 		val countVectorizer = new CountVectorizer()
 			.setInputCol(textColumnName)
 			.setOutputCol(intermediateFeatureColumnName)
@@ -137,6 +173,5 @@ object TwitterAnalysis {
 		val keywords = extractKeywords(preProcessedTweets)
 		keywords.show(200)
 		keywords.write.mode(SaveMode.Overwrite).json(s"keyword strengths for query ${query.replaceAll("[\\p{Punct}&&[^#]]", "")}.json")
-
 	}
 }
