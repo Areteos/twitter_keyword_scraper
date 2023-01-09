@@ -11,7 +11,6 @@ import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 import java.time.Duration
 import javax.ws.rs.core.UriBuilder
 
-//import scala3encoders.given
 
 object TwitterAnalysis {
 	val textColumnName = "text"
@@ -95,10 +94,6 @@ object TwitterAnalysis {
 		})
 	}
 
-
-//	def preprocessTweetText(text: String): Seq[String] = {
-//		text.replaceAll("[\\p{Punct}&&[^#]]", "").toLowerCase().split("[ \n]")
-//	}
 
 	def preprocessTweetText(text: String): Array[String] = {
 		text.replaceAll("[\\p{Punct}&&[^#]]", "").toLowerCase().split("[ \n]").filter(s => s != "")
